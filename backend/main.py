@@ -6,8 +6,9 @@ from typing import Optional, List
 import os
 from dotenv import load_dotenv
 from modulos.spamhaus import verificar_dominio
+from modulos.virustotal import analizar_archivo_vt
 
-# Cargar variables de entorno (.env)
+# Cargar variables de entorno
 load_dotenv()
 
 # Configurar Logging
@@ -34,11 +35,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class Adjunto(BaseModel):
+    nombre: str
+    contenido_base64: str
+
 # Modelo de Datos (Lo que esperamos recibir de Outlook)
 class EmailData(BaseModel):
     texto: str
     remitente: Optional[str] = None
     tiene_adjuntos: Optional[bool] = False
+    adjuntos: Optional[List[Adjunto]] = []
 
 @app.post("/api/v1/analizar")
 async def analizar_correo(data: EmailData):
@@ -52,20 +58,27 @@ async def analizar_correo(data: EmailData):
         remitente_real = data.remitente if data.remitente else "Desconocido"
         logger.info(f"Remitente: {remitente_real}")
         
+        # Consulta spamhaus
         resultado_spamhaus = verificar_dominio(remitente_real)
-        
-        # --- AQUÍ INTEGRAREMOS VIRUSTOTAL Y LA IA PRÓXIMAMENTE ---
-        
-        # Construimos el veredicto basándonos (por ahora) solo en Spamhaus
-        veredicto = "PELIGROSO" if resultado_spamhaus["es_peligroso"] else "SEGURO"
+
+        # Consulta virustotal
+        resultados_vt = []
+        if data.tiene_adjuntos and data.adjuntos:
+            logger.info(f"Procesando {len(data.adjuntos)} archivo(s) adjunto(s)...")
+            # Para no saturar la API gratuita, en la PoC analizamos solo el primero
+            primer_adjunto = data.adjuntos[0]
+            res_vt = analizar_archivo_vt(primer_adjunto.nombre, primer_adjunto.contenido_base64)
+            resultados_vt.append(res_vt)
+
         
         # Respuesta estructurada enviada de vuelta a Outlook
         respuesta = {
             "status": "success",
             "resultados": {
-                "veredicto": veredicto,
-                "confianza": 0.99 if resultado_spamhaus["es_peligroso"] else 0.50, # 99% si está en lista negra
-                "detalles": resultado_spamhaus["detalle"]
+                "veredicto": "PELIGROSO" if resultado_spamhaus.get("es_peligroso") else "SEGURO",
+                "spamhaus": resultado_spamhaus,
+                "virustotal": resultados_vt,
+                "detalles": "Análisis completado en múltiples capas."
             }
         }
         
