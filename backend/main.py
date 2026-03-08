@@ -69,6 +69,11 @@ async def analizar_correo(data: EmailData):
             primer_adjunto = data.adjuntos[0]
             res_vt = analizar_archivo_vt(primer_adjunto.nombre, primer_adjunto.contenido_base64)
             resultados_vt.append(res_vt)
+        else:
+            logger.info("El correo no tiene archivos adjuntos.")
+
+        # Calculamos la confianza
+        nivel_confianza = 0.99 if resultado_spamhaus.get("es_peligroso") else 0.50
 
         
         # Respuesta estructurada enviada de vuelta a Outlook
@@ -76,6 +81,7 @@ async def analizar_correo(data: EmailData):
             "status": "success",
             "resultados": {
                 "veredicto": "PELIGROSO" if resultado_spamhaus.get("es_peligroso") else "SEGURO",
+                "confianza": nivel_confianza,
                 "spamhaus": resultado_spamhaus,
                 "virustotal": resultados_vt,
                 "detalles": "Análisis completado en múltiples capas."
