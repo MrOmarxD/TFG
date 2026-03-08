@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 import os
 from dotenv import load_dotenv
+from modulos.spamhaus import verificar_dominio
 
 # Cargar variables de entorno (.env)
 load_dotenv()
@@ -39,38 +40,40 @@ class EmailData(BaseModel):
     remitente: Optional[str] = None
     tiene_adjuntos: Optional[bool] = False
 
-# El Endpoint Principal
 @app.post("/api/v1/analizar")
 async def analizar_correo(data: EmailData):
     logger.info("--------------------------------------------------")
     logger.info(f"Nueva solicitud de análisis recibida.")
     
     if not data.texto or len(data.texto.strip()) == 0:
-        logger.warning("Solicitud rechazada: El correo no tiene texto.")
         raise HTTPException(status_code=400, detail="El cuerpo del correo está vacío.")
 
     try:
-        logger.info(f"Remitente: {data.remitente if data.remitente else 'Desconocido'}")
-        logger.info(f"Longitud del texto: {len(data.texto)} caracteres.")
-        logger.info(f"¿Contiene adjuntos?: {'Sí' if data.tiene_adjuntos else 'No'}")
+        remitente_real = data.remitente if data.remitente else "Desconocido"
+        logger.info(f"Remitente: {remitente_real}")
         
-        # --- AQUÍ INTEGRAREMOS VIRUSTOTAL, SPAMHAUS Y LA IA ---
+        resultado_spamhaus = verificar_dominio(remitente_real)
         
-        # Respuesta estructurada temporal
+        # --- AQUÍ INTEGRAREMOS VIRUSTOTAL Y LA IA PRÓXIMAMENTE ---
+        
+        # Construimos el veredicto basándonos (por ahora) solo en Spamhaus
+        veredicto = "PELIGROSO" if resultado_spamhaus["es_peligroso"] else "SEGURO"
+        
+        # Respuesta estructurada enviada de vuelta a Outlook
         respuesta = {
             "status": "success",
             "resultados": {
-                "veredicto": "SEGURO",
-                "confianza": 0.95,
-                "detalles": "El motor de IA y APIs externas se integrarán aquí."
+                "veredicto": veredicto,
+                "confianza": 0.99 if resultado_spamhaus["es_peligroso"] else 0.50, # 99% si está en lista negra
+                "detalles": resultado_spamhaus["detalle"]
             }
         }
         
-        logger.info("Análisis completado con éxito.")
+        logger.info("Análisis completado.")
         return respuesta
 
     except Exception as e:
-        logger.error(f"Error crítico en el servidor: {str(e)}")
+        logger.error(f"Error crítico: {str(e)}")
         raise HTTPException(status_code=500, detail="Error interno procesando el correo.")
 
 # Bloque para arrancar el servidor directamente desde el script
