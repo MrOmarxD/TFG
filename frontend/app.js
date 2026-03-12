@@ -53,11 +53,31 @@ async function orquestarAnalisis() {
         const data = await respuesta.json();
 
         consola.style.borderLeftColor = data.resultados.veredicto === "PELIGROSO" ? "#D83B01" : "#107C10";
-        let htmlVT = data.resultados.virustotal.length > 0 ? `<br><b>VirusTotal:</b> Archivo analizado correctamente.` : `<br><b>VirusTotal:</b> Sin adjuntos.`;
+        // Lógica visual para pintar VirusTotal
+        let htmlVT = "<br><b>VirusTotal:</b> Sin adjuntos.";
+        
+        if (data.resultados.virustotal.length > 0) {
+            let vt = data.resultados.virustotal[0]; // Cogemos el primer adjunto
+            
+            if (vt.error) {
+                htmlVT = `<br><b>VirusTotal:</b> ⚠️ Error de conexión.`;
+            } else if (vt.analizado) {
+                // Si ya se conoce el archivo, pintamos los motores
+                let colorVT = vt.es_peligroso ? "#D83B01" : "#107C10";
+                let icono = vt.es_peligroso ? "🔴" : "🟢";
+                htmlVT = `<br><b>VirusTotal:</b> <span style="color:${colorVT}; font-weight:bold;">${icono} ${vt.maliciosos} / ${vt.total_motores} motores detectaron malware</span>`;
+            } else {
+                // Si es nuevo y se está subiendo
+                htmlVT = `<br><b>VirusTotal:</b> ⏳ ${vt.mensaje}`;
+            }
+        }
 
+        // Actualizamos la consola visual
         consola.innerHTML = `
             <b>Análisis completado:</b><br><br>
-            <b>Veredicto Spamhaus:</b> ${data.resultados.veredicto}<br>
+            <b>Veredicto Global:</b> ${data.resultados.veredicto}<br>
+            <b>Confianza:</b> ${data.resultados.confianza * 100}%<br>
+            <hr style="border:0; border-top:1px solid #ddd;">
             ${htmlVT}
         `;
 

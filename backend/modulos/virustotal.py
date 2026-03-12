@@ -1,57 +1,73 @@
 import os
 import base64
 import requests
+import hashlib
 import logging
 
 logger = logging.getLogger(__name__)
 
 def analizar_archivo_vt(nombre_archivo: str, contenido_base64: str) -> dict:
-    """
-    Envía un archivo decodificado a la API de VirusTotal para su análisis.
-    """
     api_key = os.getenv("VIRUSTOTAL_API_KEY")
     if not api_key or api_key == "tu_clave_aqui_mas_adelante":
-        logger.error("No se ha configurado la API Key de VirusTotal en el .env")
-        return {"error": "API Key no configurada"}
+        return {"error": "API Key no configurada", "es_peligroso": False}
 
-    logger.info(f"Enviando '{nombre_archivo}' a VirusTotal...")
-
-    # 1. Decodificamos el archivo que viene de Outlook (Base64 -> Bytes reales)
     try:
+        # 1. Decodificamos el archivo
         archivo_bytes = base64.b64decode(contenido_base64)
-    except Exception as e:
-        logger.error(f"Error decodificando el adjunto: {e}")
-        return {"error": "Archivo corrupto o mal codificado"}
-
-    # 2. Preparamos la petición a la API v3 de VirusTotal
-    url = "https://www.virustotal.com/api/v3/files"
-    headers = {
-        "accept": "application/json",
-        "x-apikey": api_key
-    }
-    # Simulamos un formulario subiendo el archivo
-    files = { "file": (nombre_archivo, archivo_bytes) }
-
-    try:
-        # Hacemos la petición POST a VirusTotal
-        response = requests.post(url, headers=headers, files=files)
         
-        if response.status_code == 200:
-            data = response.json()
-            # VT nos devuelve un ID de análisis. Con este ID podríamos consultar
-            # el reporte detallado, pero para la PoC, devolveremos el enlace directo.
-            id_analisis = data.get("data", {}).get("id", "")
+        # 2. Calculamos el Hash SHA-256 (La "huella dactilar" matemática)
+        sha256_hash = hashlib.sha256(archivo_bytes).hexdigest()
+        logger.info(f"🔍 Hash del archivo '{nombre_archivo}': {sha256_hash}")
+
+        headers = {
+            "accept": "application/json",
+            "x-apikey": api_key
+        }
+
+        # 3. Preguntamos a VirusTotal si YA CONOCE este Hash
+        url_hash = f"https://www.virustotal.com/api/v3/files/{sha256_hash}"
+        logger.info("Consultando reporte del archivo en VirusTotal...")
+        res_hash = requests.get(url_hash, headers=headers)
+
+        if res_hash.status_code == 200:
+            # Si lo conoce, Extraemos las estadísticas exactas
+            data = res_hash.json()
+            stats = data["data"]["attributes"]["last_analysis_stats"]
             
-            logger.info("Archivo recibido correctamente por VirusTotal.")
+            maliciosos = stats.get("malicious", 0)
+            sospechosos = stats.get("suspicious", 0)
+            inofensivos = stats.get("undetected", 0) + stats.get("harmless", 0)
+            total_motores = maliciosos + sospechosos + inofensivos
+            
+            es_peligroso = maliciosos > 0
+
+            logger.info(f"Reporte VT: {maliciosos}/{total_motores} motores lo detectan como malware.")
             return {
                 "analizado": True,
-                "mensaje": f"Archivo '{nombre_archivo}' subido a VirusTotal.",
-                "id_analisis": id_analisis
+                "es_peligroso": es_peligroso,
+                "maliciosos": maliciosos,
+                "total_motores": total_motores,
+                "mensaje": f"{maliciosos} de {total_motores} antivirus detectan amenaza."
             }
+
+        elif res_hash.status_code == 404:
+            # 4. No lo conoce. Lo subimos a la cola de análisis
+            logger.info("Archivo desconocido para VT. Procediendo a subirlo...")
+            url_upload = "https://www.virustotal.com/api/v3/files"
+            files = { "file": (nombre_archivo, archivo_bytes) }
+            res_upload = requests.post(url_upload, headers=headers, files=files)
+
+            if res_upload.status_code == 200:
+                return {
+                    "analizado": False,
+                    "es_peligroso": False, # Aún no lo sabemos
+                    "mensaje": "Archivo nuevo. Subido a VirusTotal (Pendiente de análisis)."
+                }
+            else:
+                return {"error": f"Fallo al subir: {res_upload.status_code}", "es_peligroso": False}
         else:
-            logger.error(f"Error de VirusTotal HTTP {response.status_code}: {response.text}")
-            return {"error": f"Fallo al contactar con VirusTotal (HTTP {response.status_code})"}
+            return {"error": f"Error API VT: {res_hash.status_code}", "es_peligroso": False}
 
     except Exception as e:
-        logger.error(f"Excepción al conectar con VirusTotal: {e}")
-        return {"error": str(e)}
+        logger.error(f"Excepción en VT: {e}")
+        return {"error": str(e), "es_peligroso": False}
