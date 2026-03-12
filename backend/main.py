@@ -51,8 +51,9 @@ async def analizar_correo(data: EmailData):
     logger.info("--------------------------------------------------")
     logger.info(f"Nueva solicitud de análisis recibida.")
     
-    if not data.texto or len(data.texto.strip()) == 0:
-        raise HTTPException(status_code=400, detail="El cuerpo del correo está vacío.")
+    if (not data.texto or len(data.texto.strip()) == 0) and not data.tiene_adjuntos:
+        logger.warning("Solicitud rechazada: El correo no tiene texto ni adjuntos.")
+        raise HTTPException(status_code=400, detail="El correo está completamente vacío (sin texto ni adjuntos).")
 
     try:
         remitente_real = data.remitente if data.remitente else "Desconocido"
