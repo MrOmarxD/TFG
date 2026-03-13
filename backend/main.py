@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 import os
 from dotenv import load_dotenv
-from modulos.spamhaus import verificar_dominio
+from modulos.blocklists import verificar_reputacion_total
 from modulos.virustotal import analizar_archivo_vt
 
 # Cargar variables de entorno
@@ -56,11 +56,10 @@ async def analizar_correo(data: EmailData):
         raise HTTPException(status_code=400, detail="El correo está completamente vacío (sin texto ni adjuntos).")
 
     try:
+        # CAPA 1: INTELIGENCIA DE AMENAZAS (Listas Negras)
         remitente_real = data.remitente if data.remitente else "Desconocido"
+        resultado_osint = verificar_reputacion_total(remitente_real)
         logger.info(f"Remitente: {remitente_real}")
-        
-        # CAPA 2: SPAMHAUS
-        resultado_spamhaus = verificar_dominio(remitente_real)
 
         # CAPA 2: VIRUSTOTAL
         resultados_vt = []
@@ -79,8 +78,8 @@ async def analizar_correo(data: EmailData):
             logger.info("El correo no tiene archivos adjuntos.")
         
         # CALCULAMOS EL VEREDICTO FINAL
-        # Es peligroso si Spamhaus lo bloquea O si VirusTotal encuentra malware
-        es_peligroso_final = resultado_spamhaus.get("es_peligroso") or peligro_vt
+        # Es peligroso si ALGUNA lista negra lo bloquea O si VirusTotal encuentra malware
+        es_peligroso_final = resultado_osint.get("es_peligroso") or peligro_vt
         nivel_confianza = 0.99 if es_peligroso_final else 0.50
 
         # --- CONSTRUIMOS LA RESPUESTA ---
@@ -89,23 +88,7 @@ async def analizar_correo(data: EmailData):
             "resultados": {
                 "veredicto": "PELIGROSO" if es_peligroso_final else "SEGURO",
                 "confianza": nivel_confianza,
-                "spamhaus": resultado_spamhaus,
-                "virustotal": resultados_vt,
-                "detalles": "Análisis completado en múltiples capas."
-            }
-        }
-
-        # Calculamos la confianza
-        nivel_confianza = 0.99 if resultado_spamhaus.get("es_peligroso") else 0.50
-
-        
-        # Respuesta estructurada enviada de vuelta a Outlook
-        respuesta = {
-            "status": "success",
-            "resultados": {
-                "veredicto": "PELIGROSO" if resultado_spamhaus.get("es_peligroso") else "SEGURO",
-                "confianza": nivel_confianza,
-                "spamhaus": resultado_spamhaus,
+                "osint": resultado_osint,
                 "virustotal": resultados_vt,
                 "detalles": "Análisis completado en múltiples capas."
             }

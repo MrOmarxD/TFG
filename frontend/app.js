@@ -36,7 +36,7 @@ async function orquestarAnalisis() {
             });
         }
 
-        consola.innerHTML += "<br><i>3. Enviando datos a Python, Spamhaus y VirusTotal...</i>";
+        consola.innerHTML += "<br><i>3. Consultando OSINT y VirusTotal...</i>";
 
         const respuesta = await fetch(BACKEND_URL, {
             method: "POST",
@@ -52,31 +52,46 @@ async function orquestarAnalisis() {
         if (!respuesta.ok) throw new Error(`Error HTTP: ${respuesta.status}`);
         const data = await respuesta.json();
 
-        consola.style.borderLeftColor = data.resultados.veredicto === "PELIGROSO" ? "#D83B01" : "#107C10";
-        // Lógica visual para pintar VirusTotal
+        // Color del borde general
+        let colorVeredicto = data.resultados.veredicto === "PELIGROSO" ? "#D83B01" : "#107C10";
+        consola.style.borderLeftColor = colorVeredicto;
+
+        // LÓGICA VISUAL PARA LISTAS NEGRAS (OSINT)
+        const osint = data.resultados.osint;
+        const getIcon = (isListed) => isListed ? "🔴" : "🟢";
+        const getColor = (isListed) => isListed ? "#D83B01" : "#107C10";
+
+        let htmlOSINT = `
+            <div style="margin-top: 15px; margin-bottom: 15px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
+                <b style="font-size: 12px; color: #555;">INTELIGENCIA DE AMENAZAS (IP/Dominio)</b><br>
+                <span style="color: ${getColor(osint.spamhaus)};">${getIcon(osint.spamhaus)} Spamhaus DBL</span><br>
+                <span style="color: ${getColor(osint.spamcop)};">${getIcon(osint.spamcop)} SpamCop</span><br>
+                <span style="color: ${getColor(osint.psbl)};">${getIcon(osint.psbl)} PSBL</span>
+            </div>
+        `;
+
+        // LÓGICA VISUAL PARA VIRUSTOTAL
         let htmlVT = "<br><b>VirusTotal:</b> Sin adjuntos.";
-        
         if (data.resultados.virustotal.length > 0) {
-            let vt = data.resultados.virustotal[0]; // Cogemos el primer adjunto
+            let vt = data.resultados.virustotal[0]; 
             
             if (vt.error) {
                 htmlVT = `<br><b>VirusTotal:</b> ⚠️ Error de conexión.`;
             } else if (vt.analizado) {
-                // Si ya se conoce el archivo, pintamos los motores
                 let colorVT = vt.es_peligroso ? "#D83B01" : "#107C10";
                 let icono = vt.es_peligroso ? "🔴" : "🟢";
                 htmlVT = `<br><b>VirusTotal:</b> <span style="color:${colorVT}; font-weight:bold;">${icono} ${vt.maliciosos} / ${vt.total_motores} motores detectaron malware</span>`;
             } else {
-                // Si es nuevo y se está subiendo
-                htmlVT = `<br><b>VirusTotal:</b> ⏳ ${vt.mensaje}`;
+                htmlVT = `<br><b>VirusTotal:</b> ${vt.mensaje}`;
             }
         }
 
-        // Actualizamos la consola visual
+        // CONSTRUIR PANTALLA FINAL
         consola.innerHTML = `
             <b>Análisis completado:</b><br><br>
-            <b>Veredicto Global:</b> ${data.resultados.veredicto}<br>
+            <b>Veredicto Global:</b> <span style="font-weight:bold; color:${colorVeredicto};">${data.resultados.veredicto}</span><br>
             <b>Confianza:</b> ${data.resultados.confianza * 100}%<br>
+            ${htmlOSINT}
             <hr style="border:0; border-top:1px solid #ddd;">
             ${htmlVT}
         `;
@@ -91,7 +106,6 @@ async function orquestarAnalisis() {
     }
 }
 
-// Helper para extraer el texto
 function obtenerTextoAsync() {
     return new Promise((resolve, reject) => {
         Office.context.mailbox.item.body.getAsync(Office.CoercionType.Text, (result) => {
@@ -101,14 +115,12 @@ function obtenerTextoAsync() {
     });
 }
 
-// Helper para extraer el archivo adjunto en Base64
 function obtenerAdjuntoBase64Async(attachmentId) {
     return new Promise((resolve, reject) => {
         Office.context.mailbox.item.getAttachmentContentAsync(attachmentId, (result) => {
             if (result.status === Office.AsyncResultStatus.Failed) {
                 reject(new Error(result.error.message));
             } else {
-                // Office.js devuelve el formato y el contenido. Nos quedamos el contenido en base64.
                 resolve(result.value.content);
             }
         });
