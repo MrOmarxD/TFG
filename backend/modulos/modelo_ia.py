@@ -6,7 +6,7 @@ from llama_cpp import Llama
 logger = logging.getLogger(__name__)
 
 # CONFIGURACIÓN DEL MODELO LOCAL
-NOMBRE_MODELO = "unsloth.Q4_K_M.gguf" 
+NOMBRE_MODELO = "llama-3-8b.Q4_K_M.gguf" 
 RUTA_MODELO = os.path.join(os.path.dirname(os.path.dirname(__file__)), "modelos", NOMBRE_MODELO)
 
 # Variable global para mantener el modelo cargado en memoria RAM
