@@ -1,28 +1,23 @@
-# Detector de Phishing IA - TFG Deusto
+# Orquestador de Ciberseguridad para Outlook (TFG)
 
-Este repositorio contiene la Prueba de Concepto (PoC) del Trabajo de Fin de Grado en Ingeniería Informática centrado en la detección de correos corporativos fraudulentos y spear-phishing.
+Este proyecto es un complemento (Add-in) para Microsoft Outlook diseñado para detectar amenazas en tiempo real. Utiliza un enfoque multicapa (Ensemble) combinando Inteligencia de Amenazas (OSINT), análisis estático de malware y Procesamiento de Lenguaje Natural (PLN) mediante un LLM ejecutado en local.
 
-## Arquitectura del Proyecto
+## Arquitectura de Detección (Filtro Multicapa)
 
-El proyecto sigue una arquitectura Cliente-Servidor separada en dos módulos:
+La herramienta evalúa cada correo electrónico pasando por tres fases críticas:
 
-* **Frontend (/frontend):** Add-in para Microsoft Outlook desarrollado con HTML, JS y la librería nativa "Office.js".
-* **Backend ("/backend"):** API REST desarrollada en Python con **FastAPI**, encargada de orquestar el análisis de ciberseguridad.
+1. **Capa OSINT (Reputación de Red):** - Extrae el dominio/IP del remitente y realiza consultas DNS inversas a **Spamhaus DBL**, **SpamCop** y **PSBL**. Detecta envíos desde servidores catalogados como emisores de Spam.
+2. **Capa de Análisis de Malware:**
+   - Extrae los archivos adjuntos (en Base64) y consulta la API de **VirusTotal** para evaluarlos contra más de 70 motores antivirus simultáneos.
+3. **Capa Semántica (LLM Local Fine-Tuned):**
+   - Utiliza un modelo **Llama-3 cuantizado (GGUF)**, entrenado específicamente (Fine-Tuning con método LoRA) para este TFG usando un dataset equilibrado de Phishing.
+   - Detecta tácticas de Ingeniería Social, sentido de urgencia ("Call to Action") y peticiones de datos sensibles. Se ejecuta de manera **100% offline y privada** para proteger el contenido corporativo.
 
-## Motores de Análisis Integrados
-* **Modelo NLP:** (En desarrollo) Análisis semántico del texto.
-* **VirusTotal API:** Análisis de adjuntos maliciosos en múltiples motores antivirus.
-* **Spamhaus:** Verificación DNS de dominios remitentes en listas negras.
+---
 
-## Cómo levantar el entorno de desarrollo
+## Guía de Instalación y Despliegue
 
-1.  Clonar el repositorio.
-2.  Instalar las dependencias del backend:
-    ```bash
-    pip install -r requirements.txt
-    ```
-3.  Renombrar el archivo `.env.example` a `.env` y rellenar las API Keys.
-4.  Lanzar el servidor local:
-    ```bash
-    uvicorn main:app --reload
-    ```
+### 1. Clonar el repositorio
+```bash
+git clone <https://github.com/MrOmarxD/TFG>
+cd <nombre_de_la_carpeta>

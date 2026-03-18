@@ -11,3 +11,6 @@ env/
 # Archivos del sistema
 .DS_Store
 Thumbs.db
+
+# Ignorar modelos de Inteligencia Artificial pesados
+*.gguf
