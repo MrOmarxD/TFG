@@ -5,6 +5,7 @@ from typing import List, Optional
 import logging
 import os
 from dotenv import load_dotenv
+from modulos.seguridad_email import analizar_spf_y_cabeceras
 
 # Le decimos a Python que suba un nivel (..) desde donde está este archivo
 ruta_env = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -40,6 +41,7 @@ class CorreoRequest(BaseModel):
     remitente: str
     tiene_adjuntos: bool
     adjuntos: Optional[List[Adjunto]] = []
+    cabeceras: Optional[str] = ""
 
 # EL ENDPOINT PRINCIPAL
 @app.post("/api/v1/analizar")
@@ -53,6 +55,11 @@ async def analizar_correo(data: CorreoRequest):
         logger.info("-> Iniciando Capa 1: OSINT...")
         remitente_real = data.remitente if data.remitente else "Desconocido"
         resultado_osint = verificar_reputacion_total(remitente_real)
+
+        # CAPA 1.5: AUTENTICACIÓN (SPF / Spoofing)
+        logger.info("-> Iniciando Capa 1.5: Análisis de Cabeceras y SPF...")
+        cabeceras_raw = data.cabeceras if data.cabeceras else ""
+        resultado_spf = analizar_spf_y_cabeceras(remitente_real, cabeceras_raw)
 
         # CAPA 2: VIRUSTOTAL - Evalúa los archivos adjuntos
         logger.info("-> Iniciando Capa 2: Análisis de Malware...")
@@ -81,12 +88,17 @@ async def analizar_correo(data: CorreoRequest):
         # Variables de ayuda para la decisión
         es_phishing_ia = resultado_ia.get("categoria_texto") == "phishing" or (resultado_ia.get("urgencia") and resultado_ia.get("peticion_sensible"))
         es_spam_osint = resultado_osint.get("es_peligroso")
+        es_spoofing = resultado_spf.get("es_peligroso")
 
         # Reglas de negocio (Prioridad: Malware > Phishing > Spam > Seguro)
         if peligro_vt:
             veredicto_final = "MALWARE"
             nivel_confianza = 0.99
             detalles = "VirusTotal ha detectado firmas maliciosas en el archivo adjunto."
+        elif es_spoofing:
+            veredicto_final = "PHISHING (SPOOFING)"
+            nivel_confianza = 0.99
+            detalles = "ALERTA: El remitente ha falsificado la dirección de correo. El SPF ha fallado."
         elif es_phishing_ia:
             veredicto_final = "PHISHING"
             nivel_confianza = 0.95
@@ -110,6 +122,7 @@ async def analizar_correo(data: CorreoRequest):
                 "confianza": nivel_confianza,
                 "detalles": detalles,
                 "osint": resultado_osint,
+                "spf": resultado_spf,
                 "virustotal": resultados_vt,
                 "ia": resultado_ia # Aquí mandamos el JSON de Llama-3 al frontend
             }

@@ -13,12 +13,15 @@ async function orquestarAnalisis() {
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> Analizando...';
     consola.style.display = "block";
-    consola.innerHTML = "<i>1. Leyendo correo y adjuntos...</i>";
+    consola.innerHTML = "<i>1. Leyendo correo y extrayendo cabeceras...</i>";
 
     try {
         const texto = await obtenerTextoAsync();
         const remitente = Office.context.mailbox.item.from.emailAddress;
         
+        // OBTENER CABECERAS PARA EL SPF
+        const cabeceras = await obtenerCabecerasAsync();
+
         // LÓGICA DE ADJUNTOS
         const adjuntosOutlook = Office.context.mailbox.item.attachments;
         const tieneAdjuntos = adjuntosOutlook.length > 0;
@@ -33,9 +36,11 @@ async function orquestarAnalisis() {
                 nombre: primerAdjunto.name,
                 contenido_base64: contenidoBase64
             });
+        } else {
+            consola.innerHTML += `<br><i>2. Sin archivos adjuntos para extraer...</i>`;
         }
 
-        consola.innerHTML += "<br><i>3. Consultando OSINT, VirusTotal y Modelo de IA...</i>";
+        consola.innerHTML += "<br><i>3. Consultando Inteligencia (OSINT, SPF, VT, IA)...</i>";
 
         // PETICIÓN AL BACKEND
         const respuesta = await fetch(BACKEND_URL, {
@@ -45,7 +50,8 @@ async function orquestarAnalisis() {
                 texto: texto,
                 remitente: remitente,
                 tiene_adjuntos: tieneAdjuntos,
-                adjuntos: listaAdjuntosParaPython
+                adjuntos: listaAdjuntosParaPython,
+                cabeceras: cabeceras // Enviamos las cabeceras al servidor
             })
         });
 
@@ -55,7 +61,7 @@ async function orquestarAnalisis() {
 
         // LÓGICA DE COLORES DEL VEREDICTO
         let colorVeredicto = "#107C10"; // Verde por defecto (SEGURO)
-        if (resultados.veredicto === "MALWARE" || resultados.veredicto === "PHISHING") {
+        if (resultados.veredicto.includes("PHISHING") || resultados.veredicto === "MALWARE") {
             colorVeredicto = "#D83B01"; // Rojo
         } else if (resultados.veredicto === "SPAM") {
             colorVeredicto = "#FFB900"; // Naranja/Amarillo
@@ -76,6 +82,22 @@ async function orquestarAnalisis() {
             </div>
         `;
 
+        // 1.5. BLOQUE VISUAL SPF
+        let htmlSPF = "";
+        if (resultados.spf) {
+            const spf = resultados.spf;
+            let colorSpf = spf.es_peligroso ? "#D83B01" : (spf.estado_cabecera === "pass" ? "#107C10" : "#FFB900");
+            let iconoSpf = spf.es_peligroso ? "🔴" : (spf.estado_cabecera === "pass" ? "🟢" : "⚠️");
+            
+            htmlSPF = `
+                <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
+                    <b style="font-size: 11px; color: #555;">🔐 CAPA 1.5: AUTENTICACIÓN (SPF)</b><br>
+                    <b>Estado:</b> <span style="color: ${colorSpf};">${iconoSpf} ${spf.estado_cabecera.toUpperCase()}</span><br>
+                    <i style="font-size: 11px; color: #666;">${spf.detalles}</i>
+                </div>
+            `;
+        }
+
         // 2. BLOQUE VISUAL VIRUSTOTAL
         let htmlVT = `
             <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
@@ -83,7 +105,7 @@ async function orquestarAnalisis() {
                 Sin adjuntos para analizar.
             </div>`;
             
-        if (resultados.virustotal.length > 0) {
+        if (resultados.virustotal && resultados.virustotal.length > 0) {
             let vt = resultados.virustotal[0]; 
             if (vt.error) {
                 htmlVT = `<div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;"><b style="font-size: 11px; color: #555;">🦠 CAPA 2: VIRUSTOTAL</b><br>⚠️ Error de conexión.</div>`;
@@ -103,7 +125,7 @@ async function orquestarAnalisis() {
         // 3. BLOQUE VISUAL INTELIGENCIA ARTIFICIAL
         let htmlIA = `
             <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
-                <b style="font-size: 11px; color: #555;">CAPA 3: ANÁLISIS SEMÁNTICO (IA LOCAL)</b><br>
+                <b style="font-size: 11px; color: #555;">🧠 CAPA 3: ANÁLISIS SEMÁNTICO (IA LOCAL)</b><br>
                 Error al procesar el texto.
             </div>`;
 
@@ -112,7 +134,7 @@ async function orquestarAnalisis() {
             const getIaIcon = (flag) => flag ? "🔴 Sí" : "🟢 No";
             htmlIA = `
                 <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
-                    <b style="font-size: 11px; color: #555;">CAPA 3: ANÁLISIS SEMÁNTICO (LLAMA-3)</b><br>
+                    <b style="font-size: 11px; color: #555;">🧠 CAPA 3: ANÁLISIS SEMÁNTICO (LLAMA-3)</b><br>
                     <b>Urgencia detectada:</b> ${getIaIcon(ia.urgencia)}<br>
                     <b>Petición sensible:</b> ${getIaIcon(ia.peticion_sensible)}<br>
                     <hr style="border:0; border-top:1px solid #eee; margin: 5px 0;">
@@ -123,8 +145,8 @@ async function orquestarAnalisis() {
         } else if (ia && ia.error) {
             htmlIA = `
                 <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
-                    <b style="font-size: 11px; color: #555;">CAPA 3: ANÁLISIS SEMÁNTICO</b><br>
-                    <span style="color:#D83B01;">${ia.error}</span>
+                    <b style="font-size: 11px; color: #555;">🧠 CAPA 3: ANÁLISIS SEMÁNTICO</b><br>
+                    <span style="color:#D83B01;">⚠️ ${ia.error}</span>
                 </div>`;
         }
 
@@ -138,6 +160,7 @@ async function orquestarAnalisis() {
                 <b>Detalle:</b> ${resultados.detalles}
             </div>
             ${htmlOSINT}
+            ${htmlSPF}
             ${htmlVT}
             ${htmlIA}
         `;
@@ -152,7 +175,24 @@ async function orquestarAnalisis() {
     }
 }
 
-// Helpers
+// HELPER PARA EXTRAER CABECERAS DE OUTLOOK
+function obtenerCabecerasAsync() {
+    return new Promise((resolve) => {
+        if (Office.context.mailbox.item.getAllInternetHeadersAsync) {
+            Office.context.mailbox.item.getAllInternetHeadersAsync((result) => {
+                if (result.status === Office.AsyncResultStatus.Succeeded) {
+                    resolve(result.value);
+                } else {
+                    resolve(""); 
+                }
+            });
+        } else {
+            resolve(""); 
+        }
+    });
+}
+
+// Helpers originales
 function obtenerTextoAsync() {
     return new Promise((resolve, reject) => {
         Office.context.mailbox.item.body.getAsync(Office.CoercionType.Text, (result) => {
