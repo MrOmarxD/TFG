@@ -3,6 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import logging
+import os
+from dotenv import load_dotenv
+
+# Le decimos a Python que suba un nivel (..) desde donde está este archivo
+ruta_env = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
+load_dotenv(ruta_env)
 
 # Importar los 3 módulos
 from modulos.blocklists import verificar_reputacion_total
