@@ -26,7 +26,6 @@ async function orquestarAnalisis() {
 
         if (tieneAdjuntos) {
             consola.innerHTML += `<br><i>2. Extrayendo ${adjuntosOutlook.length} archivo(s) adjunto(s)...</i>`;
-            // Extraemos solo el primero para la PoC
             const primerAdjunto = adjuntosOutlook[0];
             const contenidoBase64 = await obtenerAdjuntoBase64Async(primerAdjunto.id);
             
@@ -36,8 +35,9 @@ async function orquestarAnalisis() {
             });
         }
 
-        consola.innerHTML += "<br><i>3. Consultando OSINT y VirusTotal...</i>";
+        consola.innerHTML += "<br><i>3. Consultando OSINT, VirusTotal y Modelo de IA...</i>";
 
+        // PETICIÓN AL BACKEND
         const respuesta = await fetch(BACKEND_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -51,61 +51,108 @@ async function orquestarAnalisis() {
 
         if (!respuesta.ok) throw new Error(`Error HTTP: ${respuesta.status}`);
         const data = await respuesta.json();
+        const resultados = data.resultados;
 
-        // Color del borde general
-        let colorVeredicto = data.resultados.veredicto === "PELIGROSO" ? "#D83B01" : "#107C10";
+        // LÓGICA DE COLORES DEL VEREDICTO
+        let colorVeredicto = "#107C10"; // Verde por defecto (SEGURO)
+        if (resultados.veredicto === "MALWARE" || resultados.veredicto === "PHISHING") {
+            colorVeredicto = "#D83B01"; // Rojo
+        } else if (resultados.veredicto === "SPAM") {
+            colorVeredicto = "#FFB900"; // Naranja/Amarillo
+        }
         consola.style.borderLeftColor = colorVeredicto;
 
-        // LÓGICA VISUAL PARA LISTAS NEGRAS (OSINT)
-        const osint = data.resultados.osint;
+        // 1. BLOQUE VISUAL OSINT
+        const osint = resultados.osint;
         const getIcon = (isListed) => isListed ? "🔴" : "🟢";
         const getColor = (isListed) => isListed ? "#D83B01" : "#107C10";
-
+        
         let htmlOSINT = `
-            <div style="margin-top: 15px; margin-bottom: 15px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
-                <b style="font-size: 12px; color: #555;">INTELIGENCIA DE AMENAZAS (IP/Dominio)</b><br>
+            <div style="margin-top: 15px; margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
+                <b style="font-size: 11px; color: #555;">📍 CAPA 1: OSINT (REPUTACIÓN RED)</b><br>
                 <span style="color: ${getColor(osint.spamhaus)};">${getIcon(osint.spamhaus)} Spamhaus DBL</span><br>
                 <span style="color: ${getColor(osint.spamcop)};">${getIcon(osint.spamcop)} SpamCop</span><br>
                 <span style="color: ${getColor(osint.psbl)};">${getIcon(osint.psbl)} PSBL</span>
             </div>
         `;
 
-        // LÓGICA VISUAL PARA VIRUSTOTAL
-        let htmlVT = "<br><b>VirusTotal:</b> Sin adjuntos.";
-        if (data.resultados.virustotal.length > 0) {
-            let vt = data.resultados.virustotal[0]; 
+        // 2. BLOQUE VISUAL VIRUSTOTAL
+        let htmlVT = `
+            <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
+                <b style="font-size: 11px; color: #555;">🦠 CAPA 2: VIRUSTOTAL (MALWARE)</b><br>
+                Sin adjuntos para analizar.
+            </div>`;
             
+        if (resultados.virustotal.length > 0) {
+            let vt = resultados.virustotal[0]; 
             if (vt.error) {
-                htmlVT = `<br><b>VirusTotal:</b> ⚠️ Error de conexión.`;
+                htmlVT = `<div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;"><b style="font-size: 11px; color: #555;">🦠 CAPA 2: VIRUSTOTAL</b><br>⚠️ Error de conexión.</div>`;
             } else if (vt.analizado) {
                 let colorVT = vt.es_peligroso ? "#D83B01" : "#107C10";
                 let icono = vt.es_peligroso ? "🔴" : "🟢";
-                htmlVT = `<br><b>VirusTotal:</b> <span style="color:${colorVT}; font-weight:bold;">${icono} ${vt.maliciosos} / ${vt.total_motores} motores detectaron malware</span>`;
+                htmlVT = `
+                    <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
+                        <b style="font-size: 11px; color: #555;">🦠 CAPA 2: VIRUSTOTAL (MALWARE)</b><br>
+                        <span style="color:${colorVT}; font-weight:bold;">${icono} ${vt.maliciosos} / ${vt.total_motores} motores detectaron malware</span>
+                    </div>`;
             } else {
-                htmlVT = `<br><b>VirusTotal:</b> ${vt.mensaje}`;
+                htmlVT = `<div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;"><b style="font-size: 11px; color: #555;">🦠 CAPA 2: VIRUSTOTAL</b><br>⏳ ${vt.mensaje}</div>`;
             }
+        }
+
+        // 3. BLOQUE VISUAL INTELIGENCIA ARTIFICIAL
+        let htmlIA = `
+            <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
+                <b style="font-size: 11px; color: #555;">CAPA 3: ANÁLISIS SEMÁNTICO (IA LOCAL)</b><br>
+                Error al procesar el texto.
+            </div>`;
+
+        const ia = resultados.ia;
+        if (ia && !ia.error) {
+            const getIaIcon = (flag) => flag ? "🔴 Sí" : "🟢 No";
+            htmlIA = `
+                <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
+                    <b style="font-size: 11px; color: #555;">CAPA 3: ANÁLISIS SEMÁNTICO (LLAMA-3)</b><br>
+                    <b>Urgencia detectada:</b> ${getIaIcon(ia.urgencia)}<br>
+                    <b>Petición sensible:</b> ${getIaIcon(ia.peticion_sensible)}<br>
+                    <hr style="border:0; border-top:1px solid #eee; margin: 5px 0;">
+                    <b>Intención:</b> <span style="font-size: 12px;">${ia.intencion_detectada || 'N/A'}</span><br>
+                    <b>Justificación:</b> <i style="font-size: 12px; color: #666;">"${ia.justificacion || 'Sin justificación'}"</i>
+                </div>
+            `;
+        } else if (ia && ia.error) {
+            htmlIA = `
+                <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
+                    <b style="font-size: 11px; color: #555;">CAPA 3: ANÁLISIS SEMÁNTICO</b><br>
+                    <span style="color:#D83B01;">${ia.error}</span>
+                </div>`;
         }
 
         // CONSTRUIR PANTALLA FINAL
         consola.innerHTML = `
-            <b>Análisis completado:</b><br><br>
-            <b>Veredicto Global:</b> <span style="font-weight:bold; color:${colorVeredicto};">${data.resultados.veredicto}</span><br>
-            <b>Confianza:</b> ${data.resultados.confianza * 100}%<br>
+            <div style="text-align: center; margin-bottom: 15px;">
+                <span style="font-size: 18px; font-weight:bold; color:${colorVeredicto};">${resultados.veredicto}</span><br>
+                <span style="font-size: 12px; color: #666;">Confianza: ${(resultados.confianza * 100).toFixed(0)}%</span>
+            </div>
+            <div style="font-size: 12px; margin-bottom: 15px; text-align: justify;">
+                <b>Detalle:</b> ${resultados.detalles}
+            </div>
             ${htmlOSINT}
-            <hr style="border:0; border-top:1px solid #ddd;">
             ${htmlVT}
+            ${htmlIA}
         `;
 
     } catch (error) {
         console.error(error);
         consola.style.borderLeftColor = "#D83B01";
-        consola.innerHTML = `<b>Error:</b> <small>${error.message}</small>`;
+        consola.innerHTML = `<b>Error Crítico:</b> <small>${error.message}</small><br><br><i>Asegúrate de que ngrok está actualizado y el backend de Python está encendido.</i>`;
     } finally {
         btn.disabled = false;
         btn.innerHTML = "Analizar Correo";
     }
 }
 
+// Helpers
 function obtenerTextoAsync() {
     return new Promise((resolve, reject) => {
         Office.context.mailbox.item.body.getAsync(Office.CoercionType.Text, (result) => {
