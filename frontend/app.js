@@ -151,26 +151,30 @@ async function orquestarAnalisis() {
         if (vtData.urls && vtData.urls.length > 0) {
             hasVtData = true;
             vtData.urls.forEach(urlRes => {
-                // Acortar la URL visualmente para que no rompa el diseño del Add-in
-                let urlCortada = urlRes.url.length > 35 ? urlRes.url.substring(0, 35) + '...' : urlRes.url;
+                let urlCortada = urlRes.url.length > 50 ? urlRes.url.substring(0, 50) + '...' : urlRes.url;
+                
                 if (urlRes.error) {
-                    vtDetails += `<b style="color: #666;">Enlace:</b> ⚠️ Error al escanear (${urlCortada})<br>`;
+                    vtDetails += `
+                        <div style="word-break: break-all; margin-top: 4px;">
+                            <b style="color: #666;">Enlace:</b> ⚠️ Error al escanear <br>
+                            <small style="color: #888;">${urlCortada}</small>
+                        </div>`;
                 } else if (urlRes.analizado) {
                     let colorVT = urlRes.es_peligroso ? "#D83B01" : "#107C10";
                     let icono = urlRes.es_peligroso ? "🔴" : "🟢";
-                    vtDetails += `<b style="color: #666;">Enlace:</b> <span style="color:${colorVT}; font-weight:bold;">${icono} ${urlRes.maliciosos}/${urlRes.total_motores} motores (${urlCortada})</span><br>`;
+                    vtDetails += `
+                        <div style="word-break: break-all; margin-top: 4px;">
+                            <b style="color: #666;">Enlace:</b> <span style="color:${colorVT}; font-weight:bold;">${icono} ${urlRes.maliciosos}/${urlRes.total_motores} motores</span><br>
+                            <small style="color: #888;">${urlCortada}</small>
+                        </div>`;
                 } else {
-                    vtDetails += `<b style="color: #666;">Enlace:</b> ⚪ URL no reportada antes (${urlCortada})<br>`;
+                    vtDetails += `
+                        <div style="word-break: break-all; margin-top: 4px;">
+                            <b style="color: #666;">Enlace:</b> ⚪ URL no reportada antes <br>
+                            <small style="color: #888;">${urlCortada}</small>
+                        </div>`;
                 }
             });
-        }
-
-        if (hasVtData) {
-            htmlVT = `
-                <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
-                    <b style="font-size: 11px; color: #555;">🦠 CAPA 2: VIRUSTOTAL (MALWARE Y ENLACES)</b><br>
-                    ${vtDetails}
-                </div>`;
         }
 
         // 3. BLOQUE VISUAL INTELIGENCIA ARTIFICIAL

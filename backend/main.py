@@ -12,9 +12,10 @@ from modulos.seguridad_email import analizar_spf_y_cabeceras
 ruta_env = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
 load_dotenv(ruta_env)
 
-# Importar los 3 módulos
+# Importar los 4 módulos
 from modulos.blocklists import verificar_reputacion_total
-from modulos.virustotal import analizar_archivo_vt
+from modulos.seguridad_email import analizar_spf_y_cabeceras
+from modulos.virustotal import analizar_archivo_vt, analizar_url_vt
 from modulos.modelo_ia import analizar_texto_ia
 
 # Configuración de logs
@@ -67,6 +68,7 @@ async def analizar_correo(data: CorreoRequest):
         resultados_vt_archivos = []
         resultados_vt_urls = []
         peligro_vt = False
+        texto_limpio = data.texto if data.texto else ""
         
         # 2.A: Analizar Archivos
         if data.tiene_adjuntos and data.adjuntos:
@@ -95,7 +97,6 @@ async def analizar_correo(data: CorreoRequest):
 
         # CAPA 3: INTELIGENCIA ARTIFICIAL LOCAL - Evalúa el texto
         logger.info("-> Iniciando Capa 3: Semántica y Phishing (Llama-3)...")
-        texto_limpio = data.texto if data.texto else ""
         resultado_ia = analizar_texto_ia(texto_limpio)
 
         # EL JUEZ FINAL (Árbol de Decisión del Ensemble)
