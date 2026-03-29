@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import logging
 import os
+import re
 from dotenv import load_dotenv
 from modulos.seguridad_email import analizar_spf_y_cabeceras
 
@@ -57,25 +58,40 @@ async def analizar_correo(data: CorreoRequest):
         resultado_osint = verificar_reputacion_total(remitente_real)
 
         # CAPA 1.5: AUTENTICACIÓN (SPF / Spoofing)
-        logger.info("-> Iniciando Capa 1.5: Análisis de Cabeceras y SPF...")
+        logger.info("-> Iniciando Capa 1.5: Análisis de Cabeceras, SPF, DKIM y DMARC...")
         cabeceras_raw = data.cabeceras if data.cabeceras else ""
         resultado_spf = analizar_spf_y_cabeceras(remitente_real, cabeceras_raw)
 
         # CAPA 2: VIRUSTOTAL - Evalúa los archivos adjuntos
-        logger.info("-> Iniciando Capa 2: Análisis de Malware...")
-        resultados_vt = []
+        logger.info("-> Iniciando Capa 2: Análisis de Malware (Adjuntos y URLs)...")
+        resultados_vt_archivos = []
+        resultados_vt_urls = []
         peligro_vt = False
         
+        # 2.A: Analizar Archivos
         if data.tiene_adjuntos and data.adjuntos:
             logger.info(f"Procesando {len(data.adjuntos)} archivo(s) adjunto(s)...")
-            primer_adjunto = data.adjuntos[0] # Para la PoC analizamos el primero
+            primer_adjunto = data.adjuntos[0] 
             res_vt = analizar_archivo_vt(primer_adjunto.nombre, primer_adjunto.contenido_base64)
-            resultados_vt.append(res_vt)
-            
+            resultados_vt_archivos.append(res_vt)
             if res_vt.get("es_peligroso"):
                 peligro_vt = True
-        else:
-            logger.info("El correo no tiene archivos adjuntos.")
+
+        # 2.B: Buscar y Analizar URLs en el texto
+        urls_encontradas = re.findall(r'(https?://[^\s]+)', texto_limpio)
+        # Limpiamos las URLs por si atrapan algún punto o coma al final de la frase
+        urls_encontradas = [u.rstrip('.,;>\'")') for u in urls_encontradas]
+        
+        # Filtramos repetidas y limitamos a 2 para no saturar la API gratuita de VT
+        urls_a_analizar = list(set(urls_encontradas))[:2] 
+        
+        if urls_a_analizar:
+            logger.info(f"Se detectaron {len(urls_a_analizar)} URL(s). Enviando a VirusTotal...")
+            for enlace in urls_a_analizar:
+                res_url = analizar_url_vt(enlace)
+                resultados_vt_urls.append(res_url)
+                if res_url.get("es_peligroso"):
+                    peligro_vt = True
 
         # CAPA 3: INTELIGENCIA ARTIFICIAL LOCAL - Evalúa el texto
         logger.info("-> Iniciando Capa 3: Semántica y Phishing (Llama-3)...")
@@ -123,8 +139,8 @@ async def analizar_correo(data: CorreoRequest):
                 "detalles": detalles,
                 "osint": resultado_osint,
                 "spf": resultado_spf,
-                "virustotal": resultados_vt,
-                "ia": resultado_ia # Aquí mandamos el JSON de Llama-3 al frontend
+                "virustotal": {"archivos": resultados_vt_archivos, "urls": resultados_vt_urls},
+                "ia": resultado_ia
             }
         }
         

@@ -82,44 +82,95 @@ async function orquestarAnalisis() {
             </div>
         `;
 
-        // 1.5. BLOQUE VISUAL SPF
-        let htmlSPF = "";
+        // 1.5. BLOQUE VISUAL AUTENTICACIÓN (SPF, DKIM, DMARC)
+        let htmlAuth = "";
         if (resultados.spf) {
-            const spf = resultados.spf;
-            let colorSpf = spf.es_peligroso ? "#D83B01" : (spf.estado_cabecera === "pass" ? "#107C10" : "#FFB900");
-            let iconoSpf = spf.es_peligroso ? "🔴" : (spf.estado_cabecera === "pass" ? "🟢" : "⚠️");
+            const auth = resultados.spf;
             
-            htmlSPF = `
+            // Función para dar color y semáforo según el estado
+            const getAuthStyle = (estado) => {
+                if (estado === "pass" || estado === "bestguesspass") return { color: "#107C10", icon: "🟢" };
+                if (estado === "fail" || estado === "permerror") return { color: "#D83B01", icon: "🔴" };
+                return { color: "#FFB900", icon: "⚠️" }; // neutral, none, softfail
+            };
+
+            const spfStyle = getAuthStyle(auth.estado_spf);
+            const dkimStyle = getAuthStyle(auth.estado_dkim);
+            const dmarcStyle = getAuthStyle(auth.estado_dmarc);
+            
+            htmlAuth = `
                 <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
-                    <b style="font-size: 11px; color: #555;">🔐 CAPA 1.5: AUTENTICACIÓN (SPF)</b><br>
-                    <b>Estado:</b> <span style="color: ${colorSpf};">${iconoSpf} ${spf.estado_cabecera.toUpperCase()}</span><br>
-                    <i style="font-size: 11px; color: #666;">${spf.detalles}</i>
+                    <b style="font-size: 11px; color: #555;">🔐 CAPA 1.5: AUTENTICACIÓN (ANTI-SPOOFING)</b><br>
+                    <table style="width: 100%; font-size: 12px; margin-top: 5px;">
+                        <tr>
+                            <td><b>SPF:</b></td>
+                            <td style="color: ${spfStyle.color};">${spfStyle.icon} ${auth.estado_spf.toUpperCase()}</td>
+                        </tr>
+                        <tr>
+                            <td><b>DKIM:</b></td>
+                            <td style="color: ${dkimStyle.color};">${dkimStyle.icon} ${auth.estado_dkim.toUpperCase()}</td>
+                        </tr>
+                        <tr>
+                            <td><b>DMARC:</b></td>
+                            <td style="color: ${dmarcStyle.color};">${dmarcStyle.icon} ${auth.estado_dmarc.toUpperCase()}</td>
+                        </tr>
+                    </table>
+                    <hr style="border:0; border-top:1px solid #eee; margin: 5px 0;">
+                    <i style="font-size: 11px; color: #666;">${auth.detalles}</i>
                 </div>
             `;
         }
 
-        // 2. BLOQUE VISUAL VIRUSTOTAL
-        let htmlVT = `
+        // 2. BLOQUE VISUAL VIRUSTOTAL (ARCHIVOS Y URLs)
+       let htmlVT = `
             <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
-                <b style="font-size: 11px; color: #555;">🦠 CAPA 2: VIRUSTOTAL (MALWARE)</b><br>
-                Sin adjuntos para analizar.
+                <b style="font-size: 11px; color: #555;">🦠 CAPA 2: VIRUSTOTAL (MALWARE Y URLs)</b><br>
+                Sin adjuntos ni enlaces para analizar.
             </div>`;
             
-        if (resultados.virustotal && resultados.virustotal.length > 0) {
-            let vt = resultados.virustotal[0]; 
+        const vtData = resultados.virustotal;
+        let vtDetails = "";
+        let hasVtData = false;
+
+        // Mostrar resultados de Archivos
+        if (vtData.archivos && vtData.archivos.length > 0) {
+            hasVtData = true;
+            let vt = vtData.archivos[0]; 
             if (vt.error) {
-                htmlVT = `<div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;"><b style="font-size: 11px; color: #555;">🦠 CAPA 2: VIRUSTOTAL</b><br>⚠️ Error de conexión.</div>`;
+                vtDetails += `<b>Adjunto:</b> ⚠️ Error de conexión.<br>`;
             } else if (vt.analizado) {
                 let colorVT = vt.es_peligroso ? "#D83B01" : "#107C10";
                 let icono = vt.es_peligroso ? "🔴" : "🟢";
-                htmlVT = `
-                    <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
-                        <b style="font-size: 11px; color: #555;">🦠 CAPA 2: VIRUSTOTAL (MALWARE)</b><br>
-                        <span style="color:${colorVT}; font-weight:bold;">${icono} ${vt.maliciosos} / ${vt.total_motores} motores detectaron malware</span>
-                    </div>`;
+                vtDetails += `<b>Adjunto:</b> <span style="color:${colorVT}; font-weight:bold;">${icono} ${vt.maliciosos}/${vt.total_motores} motores alertan malware</span><br>`;
             } else {
-                htmlVT = `<div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;"><b style="font-size: 11px; color: #555;">🦠 CAPA 2: VIRUSTOTAL</b><br>⏳ ${vt.mensaje}</div>`;
+                vtDetails += `<b>Adjunto:</b> ⏳ ${vt.mensaje}<br>`;
             }
+        }
+
+        // Mostrar resultados de URLs
+        if (vtData.urls && vtData.urls.length > 0) {
+            hasVtData = true;
+            vtData.urls.forEach(urlRes => {
+                // Acortar la URL visualmente para que no rompa el diseño del Add-in
+                let urlCortada = urlRes.url.length > 35 ? urlRes.url.substring(0, 35) + '...' : urlRes.url;
+                if (urlRes.error) {
+                    vtDetails += `<b style="color: #666;">Enlace:</b> ⚠️ Error al escanear (${urlCortada})<br>`;
+                } else if (urlRes.analizado) {
+                    let colorVT = urlRes.es_peligroso ? "#D83B01" : "#107C10";
+                    let icono = urlRes.es_peligroso ? "🔴" : "🟢";
+                    vtDetails += `<b style="color: #666;">Enlace:</b> <span style="color:${colorVT}; font-weight:bold;">${icono} ${urlRes.maliciosos}/${urlRes.total_motores} motores (${urlCortada})</span><br>`;
+                } else {
+                    vtDetails += `<b style="color: #666;">Enlace:</b> ⚪ URL no reportada antes (${urlCortada})<br>`;
+                }
+            });
+        }
+
+        if (hasVtData) {
+            htmlVT = `
+                <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
+                    <b style="font-size: 11px; color: #555;">🦠 CAPA 2: VIRUSTOTAL (MALWARE Y ENLACES)</b><br>
+                    ${vtDetails}
+                </div>`;
         }
 
         // 3. BLOQUE VISUAL INTELIGENCIA ARTIFICIAL
@@ -160,7 +211,7 @@ async function orquestarAnalisis() {
                 <b>Detalle:</b> ${resultados.detalles}
             </div>
             ${htmlOSINT}
-            ${htmlSPF}
+            ${htmlAuth}
             ${htmlVT}
             ${htmlIA}
         `;

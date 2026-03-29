@@ -1,73 +1,81 @@
 import os
-import base64
 import requests
-import hashlib
+import base64
 import logging
 
 logger = logging.getLogger(__name__)
 
 def analizar_archivo_vt(nombre_archivo: str, contenido_base64: str) -> dict:
+    """ Sube un archivo a VirusTotal y obtiene el análisis (Tu código original) """
     api_key = os.getenv("VIRUSTOTAL_API_KEY")
-    if not api_key or api_key == "tu_clave_aqui_mas_adelante":
-        return {"error": "API Key no configurada", "es_peligroso": False}
+    if not api_key:
+        return {"error": True, "mensaje": "API Key de VirusTotal no configurada."}
 
+    headers = {"x-apikey": api_key}
+    
     try:
-        # 1. Decodificamos el archivo
-        archivo_bytes = base64.b64decode(contenido_base64)
+        # 1. Subir archivo
+        files = {"file": (nombre_archivo, base64.b64decode(contenido_base64))}
+        upload_res = requests.post("https://www.virustotal.com/api/v3/files", headers=headers, files=files)
         
-        # 2. Calculamos el Hash SHA-256 (La "huella dactilar" matemática)
-        sha256_hash = hashlib.sha256(archivo_bytes).hexdigest()
-        logger.info(f"🔍 Hash del archivo '{nombre_archivo}': {sha256_hash}")
-
-        headers = {
-            "accept": "application/json",
-            "x-apikey": api_key
-        }
-
-        # 3. Preguntamos a VirusTotal si YA CONOCE este Hash
-        url_hash = f"https://www.virustotal.com/api/v3/files/{sha256_hash}"
-        logger.info("Consultando reporte del archivo en VirusTotal...")
-        res_hash = requests.get(url_hash, headers=headers)
-
-        if res_hash.status_code == 200:
-            # Si lo conoce, Extraemos las estadísticas exactas
-            data = res_hash.json()
-            stats = data["data"]["attributes"]["last_analysis_stats"]
+        if upload_res.status_code != 200:
+            return {"error": True, "mensaje": f"Error subiendo a VT: {upload_res.status_code}"}
             
-            maliciosos = stats.get("malicious", 0)
-            sospechosos = stats.get("suspicious", 0)
-            inofensivos = stats.get("undetected", 0) + stats.get("harmless", 0)
-            total_motores = maliciosos + sospechosos + inofensivos
+        analysis_id = upload_res.json()["data"]["id"]
+        
+        # 2. Obtener resultado
+        report_res = requests.get(f"https://www.virustotal.com/api/v3/analyses/{analysis_id}", headers=headers)
+        if report_res.status_code == 200:
+            stats = report_res.json()["data"]["attributes"]["stats"]
+            maliciosos = stats.get("malicious", 0) + stats.get("suspicious", 0)
+            total = sum(stats.values())
             
-            es_peligroso = maliciosos > 0
-
-            logger.info(f"Reporte VT: {maliciosos}/{total_motores} motores lo detectan como malware.")
             return {
                 "analizado": True,
-                "es_peligroso": es_peligroso,
+                "es_peligroso": maliciosos > 0,
                 "maliciosos": maliciosos,
-                "total_motores": total_motores,
-                "mensaje": f"{maliciosos} de {total_motores} antivirus detectan amenaza."
+                "total_motores": total,
+                "mensaje": "Análisis completado."
             }
-
-        elif res_hash.status_code == 404:
-            # 4. No lo conoce. Lo subimos a la cola de análisis
-            logger.info("Archivo desconocido para VT. Procediendo a subirlo...")
-            url_upload = "https://www.virustotal.com/api/v3/files"
-            files = { "file": (nombre_archivo, archivo_bytes) }
-            res_upload = requests.post(url_upload, headers=headers, files=files)
-
-            if res_upload.status_code == 200:
-                return {
-                    "analizado": False,
-                    "es_peligroso": False, # Aún no lo sabemos
-                    "mensaje": "Archivo nuevo. Subido a VirusTotal (Pendiente de análisis)."
-                }
-            else:
-                return {"error": f"Fallo al subir: {res_upload.status_code}", "es_peligroso": False}
-        else:
-            return {"error": f"Error API VT: {res_hash.status_code}", "es_peligroso": False}
-
+        return {"error": True, "mensaje": "No se pudo recuperar el informe."}
     except Exception as e:
-        logger.error(f"Excepción en VT: {e}")
-        return {"error": str(e), "es_peligroso": False}
+        logger.error(f"Error VT: {e}")
+        return {"error": True, "mensaje": str(e)}
+
+def analizar_url_vt(url: str) -> dict:
+    """ Transforma la URL a Base64 y consulta su reputación en VirusTotal """
+    api_key = os.getenv("VIRUSTOTAL_API_KEY")
+    if not api_key:
+        return {"error": True, "mensaje": "API Key de VirusTotal no configurada."}
+
+    # VirusTotal v3 requiere que la URL esté en formato base64url sin el relleno '='
+    url_id = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
+    
+    headers = {"x-apikey": api_key}
+    endpoint = f"https://www.virustotal.com/api/v3/urls/{url_id}"
+    
+    try:
+        response = requests.get(endpoint, headers=headers)
+        if response.status_code == 200:
+            stats = response.json()["data"]["attributes"]["last_analysis_stats"]
+            maliciosos = stats.get("malicious", 0) + stats.get("suspicious", 0)
+            total = sum(stats.values())
+            
+            return {
+                "url": url,
+                "analizado": True,
+                "es_peligroso": maliciosos > 0,
+                "maliciosos": maliciosos,
+                "total_motores": total,
+                "mensaje": "OK"
+            }
+        elif response.status_code == 404:
+            # Significa que VT nunca ha visto esta URL antes
+            return {"url": url, "analizado": False, "es_peligroso": False, "mensaje": "URL desconocida en VT."}
+        elif response.status_code == 429:
+             return {"url": url, "error": True, "mensaje": "Límite de API excedido."}
+        else:
+            return {"url": url, "error": True, "mensaje": f"Error HTTP {response.status_code}"}
+    except Exception as e:
+        logger.error(f"Error analizando URL en VT: {e}")
+        return {"url": url, "error": True, "mensaje": str(e)}
