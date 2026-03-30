@@ -100,63 +100,134 @@ async function orquestarAnalisis() {
 function pintarCapaEnVivo(capa, datos) {
     if (capa === "osint") {
         document.getElementById("box-auth").innerHTML = "⏳ <b>Capa 1.5:</b> Verificando criptografía y SPF...";
+        
+        const getIcon = (isListed) => isListed ? "🔴" : "🟢";
+        const getColor = (isListed) => isListed ? "#D83B01" : "#107C10";
+
         document.getElementById("box-osint").outerHTML = `
             <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
                 <b style="font-size: 11px; color: #555;">📍 CAPA 1: OSINT (REPUTACIÓN RED)</b><br>
-                <span style="color: ${datos.spamhaus ? '#D83B01' : '#107C10'};">${datos.spamhaus ? '🔴' : '🟢'} Spamhaus DBL</span><br>
-                <span style="color: ${datos.spamcop ? '#D83B01' : '#107C10'};">${datos.spamcop ? '🔴' : '🟢'} SpamCop</span><br>
-                <span style="color: ${datos.psbl ? '#D83B01' : '#107C10'};">${datos.psbl ? '🔴' : '🟢'} PSBL</span>
+                <span style="color: ${getColor(datos.spamhaus)};">${getIcon(datos.spamhaus)} Spamhaus DBL</span><br>
+                <span style="color: ${getColor(datos.spamcop)};">${getIcon(datos.spamcop)} SpamCop</span><br>
+                <span style="color: ${getColor(datos.psbl)};">${getIcon(datos.psbl)} PSBL</span>
             </div>`;
     } 
     else if (capa === "auth") {
         document.getElementById("box-vt").innerHTML = "⏳ <b>Capa 2:</b> Subiendo adjuntos y URLs a VirusTotal...";
-        const spfStyle = (datos.estado_spf === "pass") ? "🟢" : (datos.estado_spf === "fail" ? "🔴" : "⚠️");
-        const dkimStyle = (datos.estado_dkim === "pass") ? "🟢" : (datos.estado_dkim === "fail" ? "🔴" : "⚠️");
-        const dmarcStyle = (datos.estado_dmarc === "pass") ? "🟢" : (datos.estado_dmarc === "fail" ? "🔴" : "⚠️");
+        
+        const getAuthStyle = (estado) => {
+            if (estado === "pass" || estado === "bestguesspass") return { color: "#107C10", icon: "🟢" };
+            if (estado === "fail" || estado === "permerror") return { color: "#D83B01", icon: "🔴" };
+            return { color: "#FFB900", icon: "⚠️" };
+        };
+
+        const spfStyle = getAuthStyle(datos.estado_spf);
+        const dkimStyle = getAuthStyle(datos.estado_dkim);
+        const dmarcStyle = getAuthStyle(datos.estado_dmarc);
         
         document.getElementById("box-auth").outerHTML = `
             <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
                 <b style="font-size: 11px; color: #555;">🔐 CAPA 1.5: AUTENTICACIÓN (ANTI-SPOOFING)</b><br>
-                <b>SPF:</b> ${spfStyle} ${datos.estado_spf.toUpperCase()} | 
-                <b>DKIM:</b> ${dkimStyle} ${datos.estado_dkim.toUpperCase()} | 
-                <b>DMARC:</b> ${dmarcStyle} ${datos.estado_dmarc.toUpperCase()}<br>
+                <table style="width: 100%; font-size: 12px; margin-top: 5px;">
+                    <tr>
+                        <td><b>SPF:</b></td>
+                        <td style="color: ${spfStyle.color};">${spfStyle.icon} ${datos.estado_spf.toUpperCase()}</td>
+                    </tr>
+                    <tr>
+                        <td><b>DKIM:</b></td>
+                        <td style="color: ${dkimStyle.color};">${dkimStyle.icon} ${datos.estado_dkim.toUpperCase()}</td>
+                    </tr>
+                    <tr>
+                        <td><b>DMARC:</b></td>
+                        <td style="color: ${dmarcStyle.color};">${dmarcStyle.icon} ${datos.estado_dmarc.toUpperCase()}</td>
+                    </tr>
+                </table>
+                <hr style="border:0; border-top:1px solid #eee; margin: 5px 0;">
                 <i style="font-size: 11px; color: #666;">${datos.detalles}</i>
             </div>`;
     }
     else if (capa === "vt") {
-        document.getElementById("box-ia").innerHTML = "⏳ <b>Capa 3:</b> Despertando a Llama-3. Analizando la semántica del texto... (Esto tomará unos segundos)";
-        let vtDetails = "";
-        let hasData = false;
+        document.getElementById("box-ia").innerHTML = "⏳ <b>Capa 3:</b> Despertando a Llama-3. Analizando semántica... (Tomará unos segundos)";
         
+        let vtDetails = "";
+        let hasVtData = false;
+
+        // Mostrar resultados de Archivos (Formato Original)
         if (datos.archivos && datos.archivos.length > 0) {
-            hasData = true;
-            let vt = datos.archivos[0];
-            vtDetails += `<b>Adjunto:</b> ${vt.error ? '⚠️ Error' : (vt.analizado ? (vt.es_peligroso ? `🔴 <span style="color:#D83B01;font-weight:bold">${vt.maliciosos}/${vt.total_motores}</span>` : `🟢 Limpio`) : `⏳ Pendiente`)}<br>`;
+            hasVtData = true;
+            let vt = datos.archivos[0]; 
+            if (vt.error) {
+                vtDetails += `<b>Adjunto:</b> ⚠️ Error de conexión.<br>`;
+            } else if (vt.analizado) {
+                let colorVT = vt.es_peligroso ? "#D83B01" : "#107C10";
+                let icono = vt.es_peligroso ? "🔴" : "🟢";
+                vtDetails += `<b>Adjunto:</b> <span style="color:${colorVT}; font-weight:bold;">${icono} ${vt.maliciosos}/${vt.total_motores} motores alertan malware</span><br>`;
+            } else {
+                vtDetails += `<b>Adjunto:</b> ⏳ ${vt.mensaje}<br>`;
+            }
         }
+
+        // Mostrar resultados de URLs (Formato Original con word-break)
         if (datos.urls && datos.urls.length > 0) {
-            hasData = true;
-            datos.urls.forEach(u => {
-                let uCortada = u.url.length > 40 ? u.url.substring(0, 40) + '...' : u.url;
-                vtDetails += `<div style="word-break:break-all; margin-top:4px;"><b>Enlace:</b> ${u.error ? '⚠️ Error' : (u.analizado ? (u.es_peligroso ? `🔴 <span style="color:#D83B01;font-weight:bold">${u.maliciosos}/${u.total_motores}</span>` : `🟢 Limpio`) : `⚪ Desconocido`)}<br><small style="color:#888;">${uCortada}</small></div>`;
+            hasVtData = true;
+            datos.urls.forEach(urlRes => {
+                let urlCortada = urlRes.url.length > 50 ? urlRes.url.substring(0, 50) + '...' : urlRes.url;
+                
+                if (urlRes.error) {
+                    vtDetails += `
+                        <div style="word-break: break-all; margin-top: 4px;">
+                            <b style="color: #666;">Enlace:</b> ⚠️ Error al escanear <br>
+                            <small style="color: #888;">${urlCortada}</small>
+                        </div>`;
+                } else if (urlRes.analizado) {
+                    let colorVT = urlRes.es_peligroso ? "#D83B01" : "#107C10";
+                    let icono = urlRes.es_peligroso ? "🔴" : "🟢";
+                    vtDetails += `
+                        <div style="word-break: break-all; margin-top: 4px;">
+                            <b style="color: #666;">Enlace:</b> <span style="color:${colorVT}; font-weight:bold;">${icono} ${urlRes.maliciosos}/${urlRes.total_motores} motores</span><br>
+                            <small style="color: #888;">${urlCortada}</small>
+                        </div>`;
+                } else {
+                    vtDetails += `
+                        <div style="word-break: break-all; margin-top: 4px;">
+                            <b style="color: #666;">Enlace:</b> ⚪ URL no reportada antes <br>
+                            <small style="color: #888;">${urlCortada}</small>
+                        </div>`;
+                }
             });
         }
-        
+
+        if (!hasVtData) {
+            vtDetails = "Sin adjuntos ni enlaces sospechosos para analizar.";
+        }
+
         document.getElementById("box-vt").outerHTML = `
             <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                <b style="font-size: 11px; color: #555;">🦠 CAPA 2: VIRUSTOTAL (MALWARE)</b><br>
-                ${hasData ? vtDetails : "Sin adjuntos ni enlaces sospechosos."}
+                <b style="font-size: 11px; color: #555;">🦠 CAPA 2: VIRUSTOTAL (MALWARE Y ENLACES)</b><br>
+                ${vtDetails}
             </div>`;
     }
     else if (capa === "ia") {
         const getIaIcon = (flag) => flag ? "🔴 Sí" : "🟢 No";
+        
+        let contenidoIA = "";
+        if (datos.error) {
+            contenidoIA = `<span style="color:#D83B01;">⚠️ ${datos.error}</span>`;
+        } else {
+            // ¡Restauramos todos los campos originales de la IA!
+            contenidoIA = `
+                <b>Urgencia detectada:</b> ${getIaIcon(datos.urgencia)}<br>
+                <b>Petición sensible:</b> ${getIaIcon(datos.peticion_sensible)}<br>
+                <hr style="border:0; border-top:1px solid #eee; margin: 5px 0;">
+                <b>Intención:</b> <span style="font-size: 12px;">${datos.intencion_detectada || 'N/A'}</span><br>
+                <b>Justificación:</b> <i style="font-size: 12px; color: #666;">"${datos.justificacion || 'Sin justificación'}"</i>
+            `;
+        }
+
         document.getElementById("box-ia").outerHTML = `
             <div style="margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
                 <b style="font-size: 11px; color: #555;">🧠 CAPA 3: ANÁLISIS SEMÁNTICO (LLAMA-3)</b><br>
-                ${datos.error ? `<span style="color:#D83B01;">⚠️ ${datos.error}</span>` : `
-                <b>Urgencia:</b> ${getIaIcon(datos.urgencia)} | 
-                <b>Datos Sensibles:</b> ${getIaIcon(datos.peticion_sensible)}<br>
-                <hr style="border:0; border-top:1px solid #eee; margin: 5px 0;">
-                <i style="font-size: 11px; color: #666;">"${datos.justificacion || 'N/A'}"</i>`}
+                ${contenidoIA}
             </div>`;
     }
     else if (capa === "veredicto") {
@@ -166,10 +237,10 @@ function pintarCapaEnVivo(capa, datos) {
         
         document.getElementById("consola").style.borderLeftColor = colorV;
         document.getElementById("veredicto-box").innerHTML = `
-            <span style="font-size: 20px; font-weight:bold; color:${colorV};">${datos.veredicto}</span><br>
+            <span style="font-size: 18px; font-weight:bold; color:${colorV};">${datos.veredicto}</span><br>
             <span style="font-size: 12px; color: #666;">Confianza: ${(datos.confianza * 100).toFixed(0)}%</span>
-            <div style="font-size: 12px; margin-top: 5px; text-align: justify; padding: 5px; background: ${colorV}15; border-radius: 4px;">
-                <b>Detalle:</b> ${datos.detalles}
+            <div style="font-size: 12px; margin-bottom: 15px; text-align: justify;">
+                <br><b>Detalle:</b> ${datos.detalles}
             </div>`;
     }
     else if (capa === "error") {
