@@ -33,9 +33,18 @@ def analizar_archivo_vt(nombre_archivo: str, contenido_base64: str) -> dict:
 
         if res_hash.status_code == 200:
             # Si lo conoce, Extraemos las estadísticas exactas
-            stats = res_hash.json()["data"]["attributes"]["last_analysis_stats"]
+            stats = res_hash.json()["data"]["attributes"].get("last_analysis_stats", {})
             maliciosos = stats.get("malicious", 0) + stats.get("suspicious", 0)
             total_motores = sum(stats.values())
+            
+            # LÓGICA ANTI 0/0 (Protección asincronía)
+            if total_motores == 0:
+                logger.info("El archivo está en VT pero el análisis aún no ha terminado (0 motores).")
+                return {
+                    "analizado": False,
+                    "es_peligroso": False,
+                    "mensaje": "En cola de escaneo. Analice de nuevo en unos segundos."
+                }
             
             es_peligroso = maliciosos > 0
             logger.info(f"Reporte VT: {maliciosos}/{total_motores} motores lo detectan como malware.")
@@ -49,14 +58,13 @@ def analizar_archivo_vt(nombre_archivo: str, contenido_base64: str) -> dict:
             }
 
         elif res_hash.status_code == 404:
-            # 4. No lo conoce. Lo subimos a la cola de análisis directamente desde la memoria RAM
+            # 4. No lo conoce. Lo subimos a la cola de análisis
             logger.info("Archivo desconocido para VT. Procediendo a subirlo...")
             url_upload = "https://www.virustotal.com/api/v3/files"
             files = { "file": (nombre_archivo, archivo_bytes) }
             res_upload = requests.post(url_upload, headers=headers, files=files)
 
             if res_upload.status_code == 200:
-                # Opcional: Podríamos esperar y pedir el análisis, pero para la PoC decir que está pendiente es válido
                 return {
                     "analizado": False,
                     "es_peligroso": False, 
@@ -83,7 +91,7 @@ def analizar_url_vt(url: str) -> dict:
     }
     
     try:
-        # 1. Enviar la URL a escanear
+        # 1. Enviar la URL a escanear (Formato formulario)
         payload = {"url": url}
         scan_res = requests.post("https://www.virustotal.com/api/v3/urls", headers=headers, data=payload)
         
@@ -101,6 +109,16 @@ def analizar_url_vt(url: str) -> dict:
                 stats = report_res.json()["data"]["attributes"]["stats"]
                 maliciosos = stats.get("malicious", 0) + stats.get("suspicious", 0)
                 total = sum(stats.values())
+                
+                # LÓGICA ANTI 0/0 PARA URLs
+                if total == 0:
+                    logger.info("La URL está procesándose en VT pero aún tiene 0 motores.")
+                    return {
+                        "url": url,
+                        "analizado": False,
+                        "es_peligroso": False,
+                        "mensaje": "En cola de escaneo."
+                    }
                 
                 return {
                     "url": url,

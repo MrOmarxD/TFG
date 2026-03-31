@@ -13,7 +13,7 @@ async function orquestarAnalisis() {
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> Analizando...';
     consola.style.display = "block";
-    consola.style.borderLeftColor = "#ccc"; // Color neutro al empezar
+    consola.style.borderLeftColor = "#ccc";
 
     // CREAMOS EL "ESQUELETO" VISUAL (Las cajas en estado de espera)
     consola.innerHTML = `
@@ -38,8 +38,11 @@ async function orquestarAnalisis() {
     try {
         const texto = await obtenerTextoAsync();
         const remitente = Office.context.mailbox.item.from.emailAddress;
+        
+        // OBTENER CABECERAS PARA EL SPF
         const cabeceras = await obtenerCabecerasAsync();
 
+        // LÓGICA DE ADJUNTOS
         const adjuntosOutlook = Office.context.mailbox.item.attachments;
         const tieneAdjuntos = adjuntosOutlook.length > 0;
         let listaAdjuntosParaPython = [];
@@ -50,19 +53,23 @@ async function orquestarAnalisis() {
             listaAdjuntosParaPython.push({ nombre: primerAdjunto.name, contenido_base64: contenidoBase64 });
         }
 
-        // INICIAMOS LA PETICIÓN POR STREAMING
         const respuesta = await fetch(BACKEND_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ 
-                texto: texto, remitente: remitente, tiene_adjuntos: tieneAdjuntos,
-                adjuntos: listaAdjuntosParaPython, cabeceras: cabeceras 
+                texto: texto, 
+                remitente: remitente, 
+                tiene_adjuntos: tieneAdjuntos,
+                adjuntos: listaAdjuntosParaPython,
+                cabeceras: cabeceras 
             })
         });
 
-        if (!respuesta.ok) throw new Error(`Error HTTP: ${respuesta.status}`);
+        if (!respuesta.ok) {
+            throw new Error(`Error HTTP: ${respuesta.status}`);
+        }
         
-        // LEER EL FLUJO DE DATOS (STREAM) EN TIEMPO REAL
+        // LECTOR DE STREAM (SSE)
         const reader = respuesta.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let buffer = "";
@@ -71,17 +78,15 @@ async function orquestarAnalisis() {
             const { value, done } = await reader.read();
             if (done) break;
             
-            // Decodificamos el trozo de texto que acaba de llegar
             buffer += decoder.decode(value, { stream: true });
             
-            // Separamos por saltos de línea (por si llegan 2 JSONs juntos muy rápido)
             let partes = buffer.split("\n");
-            buffer = partes.pop(); // Guardamos el trozo incompleto para la siguiente vuelta
+            buffer = partes.pop(); 
             
             for (let parte of partes) {
                 if (parte.trim() !== "") {
                     const chunk = JSON.parse(parte);
-                    pintarCapaEnVivo(chunk.capa, chunk.datos); // Actualizamos la cajita correspondiente
+                    pintarCapaEnVivo(chunk.capa, chunk.datos); 
                 }
             }
         }
@@ -89,7 +94,7 @@ async function orquestarAnalisis() {
     } catch (error) {
         console.error(error);
         document.getElementById("consola").style.borderLeftColor = "#D83B01";
-        document.getElementById("veredicto-box").innerHTML = `<b>Error Crítico:</b> <small>${error.message}</small>`;
+        document.getElementById("veredicto-box").innerHTML = `<b>Error Crítico:</b> <small>${error.message}</small><br><i style="font-size:10px;">Compruebe que ngrok y el backend de Python están encendidos.</i>`;
     } finally {
         btn.disabled = false;
         btn.innerHTML = "Analizar Correo";
@@ -152,7 +157,7 @@ function pintarCapaEnVivo(capa, datos) {
         let vtDetails = "";
         let hasVtData = false;
 
-        // Mostrar resultados de Archivos (Formato Original)
+        // Mostrar resultados de Archivos
         if (datos.archivos && datos.archivos.length > 0) {
             hasVtData = true;
             let vt = datos.archivos[0]; 
@@ -167,7 +172,7 @@ function pintarCapaEnVivo(capa, datos) {
             }
         }
 
-        // Mostrar resultados de URLs (Formato Original con word-break)
+        // Mostrar resultados de URLs
         if (datos.urls && datos.urls.length > 0) {
             hasVtData = true;
             datos.urls.forEach(urlRes => {
@@ -190,7 +195,7 @@ function pintarCapaEnVivo(capa, datos) {
                 } else {
                     vtDetails += `
                         <div style="word-break: break-all; margin-top: 4px;">
-                            <b style="color: #666;">Enlace:</b> ⚪ URL no reportada antes <br>
+                            <b style="color: #666;">Enlace:</b> ⏳ En cola / Desconocida <br>
                             <small style="color: #888;">${urlCortada}</small>
                         </div>`;
                 }
@@ -214,7 +219,6 @@ function pintarCapaEnVivo(capa, datos) {
         if (datos.error) {
             contenidoIA = `<span style="color:#D83B01;">⚠️ ${datos.error}</span>`;
         } else {
-            // ¡Restauramos todos los campos originales de la IA!
             contenidoIA = `
                 <b>Urgencia detectada:</b> ${getIaIcon(datos.urgencia)}<br>
                 <b>Petición sensible:</b> ${getIaIcon(datos.peticion_sensible)}<br>
