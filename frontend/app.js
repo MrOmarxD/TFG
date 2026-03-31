@@ -69,7 +69,7 @@ async function orquestarAnalisis() {
             throw new Error(`Error HTTP: ${respuesta.status}`);
         }
         
-        // LECTOR DE STREAM (SSE)
+        // LECTOR DE STREAM (SSE) MEJORADO (Evita cortes de JSON)
         const reader = respuesta.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let buffer = "";
@@ -78,15 +78,23 @@ async function orquestarAnalisis() {
             const { value, done } = await reader.read();
             if (done) break;
             
+            // Añadimos el nuevo trozo de texto al buffer general
             buffer += decoder.decode(value, { stream: true });
             
-            let partes = buffer.split("\n");
-            buffer = partes.pop(); 
-            
-            for (let parte of partes) {
-                if (parte.trim() !== "") {
-                    const chunk = JSON.parse(parte);
-                    pintarCapaEnVivo(chunk.capa, chunk.datos); 
+            // Buscamos si ya tenemos un salto de línea (que indica un JSON completo)
+            let saltoLineaIndex;
+            while ((saltoLineaIndex = buffer.indexOf('\n')) >= 0) {
+                let lineaCompleta = buffer.substring(0, saltoLineaIndex).trim();
+                
+                buffer = buffer.substring(saltoLineaIndex + 1);
+                
+                if (lineaCompleta) {
+                    try {
+                        const chunk = JSON.parse(lineaCompleta);
+                        pintarCapaEnVivo(chunk.capa, chunk.datos);
+                    } catch (e) {
+                        console.error("Error parseando chunk de stream:", lineaCompleta, e);
+                    }
                 }
             }
         }
