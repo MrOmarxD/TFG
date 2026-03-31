@@ -69,34 +69,40 @@ async function orquestarAnalisis() {
             throw new Error(`Error HTTP: ${respuesta.status}`);
         }
         
-        // LECTOR DE STREAM (SSE) MEJORADO (Evita cortes de JSON)
+        // LECTOR DE STREAM (SSE)
         const reader = respuesta.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let buffer = "";
 
         while (true) {
             const { value, done } = await reader.read();
-            if (done) break;
             
-            // Añadimos el nuevo trozo de texto al buffer general
-            buffer += decoder.decode(value, { stream: true });
+            // 1. Decodificamos el nuevo trozo de forma segura
+            if (value) {
+                buffer += decoder.decode(value, { stream: true });
+            }
             
-            // Buscamos si ya tenemos un salto de línea (que indica un JSON completo)
-            let saltoLineaIndex;
-            while ((saltoLineaIndex = buffer.indexOf('\n')) >= 0) {
-                let lineaCompleta = buffer.substring(0, saltoLineaIndex).trim();
-                
-                buffer = buffer.substring(saltoLineaIndex + 1);
-                
-                if (lineaCompleta) {
+            // 2. Buscamos y extraemos todas las líneas completas
+            let partes = buffer.split('\n');
+            
+            // 3. El último elemento del split() SIEMPRE es lo que queda sin salto de línea
+            // Así que lo sacamos del array y lo guardamos de vuelta en el buffer para la siguiente ronda
+            buffer = partes.pop(); 
+            
+            // 4. Procesamos los JSONs que sí están completos
+            for (let parte of partes) {
+                if (parte.trim() !== "") {
                     try {
-                        const chunk = JSON.parse(lineaCompleta);
+                        const chunk = JSON.parse(parte);
                         pintarCapaEnVivo(chunk.capa, chunk.datos);
                     } catch (e) {
-                        console.error("Error parseando chunk de stream:", lineaCompleta, e);
+                        console.error("❌ Error aislando JSON:", parte, e);
                     }
                 }
             }
+            
+            // 5. Salimos del bucle si el servidor dice que ya ha terminado
+            if (done) break;
         }
 
     } catch (error) {
