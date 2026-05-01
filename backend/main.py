@@ -97,36 +97,72 @@ async def analizar_correo(data: CorreoRequest):
             yield json.dumps({"capa": "ia", "datos": resultado_ia}) + "\n"
             await asyncio.sleep(0.1)
 
-            # VEREDICTO FINAL
-            logger.info("-> Calculando Veredicto...")
-            es_phishing_ia = resultado_ia.get("categoria_texto") == "phishing" or (resultado_ia.get("urgencia") and resultado_ia.get("peticion_sensible"))
-            es_spam_osint = resultado_osint.get("es_peligroso")
-            es_spoofing = resultado_spf.get("es_peligroso")
-
+            # VEREDICTO FINAL - El Juez Final Ponderado
+            logger.info("-> Calculando Veredicto Ponderado...")
+            
+            riesgo_total = 0
+            
+            # 1. Verificar Malware (Capa Técnica - Bloqueo Crítico 100%)
             if peligro_vt:
                 veredicto_final = "MALWARE"
-                nivel_confianza = 0.99
-                detalles = "VirusTotal ha detectado firmas maliciosas."
-            elif es_spoofing:
-                veredicto_final = "PHISHING (SPOOFING)"
-                nivel_confianza = 0.99
-                detalles = "ALERTA: El remitente ha falsificado la dirección de correo."
-            elif es_phishing_ia:
-                veredicto_final = "PHISHING"
-                nivel_confianza = 0.95
-                detalles = f"La IA detectó un intento de fraude: {resultado_ia.get('justificacion', 'Petición sospechosa')}"
-            elif es_spam_osint:
-                veredicto_final = "SPAM"
-                nivel_confianza = 0.90
-                detalles = "El dominio/IP del remitente se encuentra en listas negras."
+                riesgo_total = 100
+                color = "ROJO"
+                detalles = "BLOQUEO CRÍTICO: VirusTotal ha detectado firmas maliciosas."
             else:
-                veredicto_final = "SEGURO"
-                nivel_confianza = 0.98
-                detalles = "El correo ha pasado los filtros de seguridad sin levantar alertas."
+                # 2. Asignación de pesos según la detección
+                # 2.1 IA Semántica (50%)
+                es_phishing_ia = resultado_ia.get("categoria_texto") == "phishing" or (resultado_ia.get("urgencia") and resultado_ia.get("peticion_sensible"))
+                score_ia = 50 if es_phishing_ia else 0
+                
+                # 2.2 Identidad (20%)
+                score_spf = 20 if resultado_spf.get("es_peligroso") else 0
+                
+                # 2.3 Reputación DNSBL (30%) - Lógica de 1 lista o 2+ listas
+                listas_positivas = resultado_osint.get("listas_detectadas", 0) 
+                
+                if listas_positivas >= 2:
+                    score_dnsbl = 30  # 100% del peso de la capa
+                elif listas_positivas == 1:
+                    score_dnsbl = 15  # 50% del peso de la capa
+                else:
+                    score_dnsbl = 0
+                    
+                # Suma base de riesgo
+                riesgo_total = score_ia + score_spf + score_dnsbl
+                
+                # 3. Factor de Confianza (Contacto Conocido)
+                # Para implementarlo en un entorno real, aquí se consultaría la API de Graph.
+                # Por ahora, simulamos que el dominio de la universidad es de confianza.
+                es_contacto_conocido = False
+                if "@deusto.es" in remitente_real.lower():
+                    es_contacto_conocido = True
+                    
+                if es_contacto_conocido:
+                    riesgo_total = riesgo_total * 0.8  # Multiplicador reductor de confianza
+                    
+                # 4. Clasificación del riesgo para la interfaz
+                if riesgo_total >= 60:
+                    veredicto_final = "PHISHING"
+                    color = "ROJO"
+                    detalles = f"Riesgo crítico de suplantación. Score: {riesgo_total}%. (IA: {score_ia}, Auth: {score_spf}, OSINT: {score_dnsbl})"
+                elif riesgo_total >= 20:
+                    veredicto_final = "PRECAUCIÓN"
+                    color = "AMARILLO"
+                    detalles = f"Se han detectado anomalías. Score: {riesgo_total}%. Se recomienda cautela."
+                else:
+                    veredicto_final = "SEGURO"
+                    color = "VERDE"
+                    detalles = "El correo ha pasado todos los filtros de seguridad sin levantar alertas."
 
+            # Enviamos el JSON actualizado al frontend
             yield json.dumps({
                 "capa": "veredicto", 
-                "datos": {"veredicto": veredicto_final, "confianza": nivel_confianza, "detalles": detalles}
+                "datos": {
+                    "veredicto": veredicto_final, 
+                    "score_riesgo": riesgo_total,
+                    "color": color,
+                    "detalles": detalles
+                }
             }) + "\n"
 
         except Exception as e:

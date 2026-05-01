@@ -62,12 +62,18 @@ def verificar_reputacion_total(email: str) -> dict:
             pass
 
     # 4. VEREDICTO FINAL
-    # Si CUALQUIERA de las tres listas dice que es malo, levantamos la alerta
-    resultados["es_peligroso"] = resultados["spamhaus"] or resultados["spamcop"] or resultados["psbl"]
+    # Contamos cuántas listas han dado positivo
+    listas_detectadas = sum([resultados["spamhaus"], resultados["spamcop"], resultados["psbl"]])
+    resultados["listas_detectadas"] = listas_detectadas
+
+    # Si CUALQUIERA de las tres listas dice que es malo, levantamos la alerta general (para compatibilidad)
+    resultados["es_peligroso"] = listas_detectadas > 0
     
     if not resultados["es_peligroso"]:
         resultados["mensajes"].append("El remitente está limpio en Spamhaus, SpamCop y PSBL.")
+    else:
+        resultados["mensajes"].append(f"Listado en {listas_detectadas} de 3 listas.")
         
-    logger.info(f"Reporte OSINT para {dominio}: Spamhaus={resultados['spamhaus']}, SpamCop={resultados['spamcop']}, PSBL={resultados['psbl']}")
+    logger.info(f"Reporte OSINT para {dominio}: Spamhaus={resultados['spamhaus']}, SpamCop={resultados['spamcop']}, PSBL={resultados['psbl']}, Total_Listas={listas_detectadas}")
     
     return resultados

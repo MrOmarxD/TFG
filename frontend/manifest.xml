@@ -10,10 +10,11 @@
   <Version>2.0.0.0</Version>
   <ProviderName>Ingeniería Deusto</ProviderName>
   <DefaultLocale>es-ES</DefaultLocale>
-  <DisplayName DefaultValue="Seguridad IA Corporativa" />
-  <Description DefaultValue="Herramienta de análisis integral de phishing."/>
-  <IconUrl DefaultValue="https://cdn-icons-png.flaticon.com/512/2721/2721294.png" />
-  <HighResolutionIconUrl DefaultValue="https://cdn-icons-png.flaticon.com/512/2721/2721294.png" />
+  <ProviderName>Ingeniería Deusto</ProviderName>
+  <DisplayName DefaultValue="PhishGuard AI" />
+  <Description DefaultValue="Protección proactiva contra phishing y malware utilizando inteligencia artificial local."/>
+  <IconUrl DefaultValue="https://cdn-icons-png.flaticon.com/512/2092/2092663.png" />
+  <HighResolutionIconUrl DefaultValue="https://cdn-icons-png.flaticon.com/512/2092/2092663.png" />
 
   <Hosts>
     <Host Name="Mailbox" />
@@ -82,9 +83,9 @@
           <bt:Url id="TaskpaneUrl" DefaultValue="https://mromarxd.github.io/TFG/frontend/index.html" />
         </bt:Urls>
         <bt:ShortStrings>
-          <bt:String id="groupLabel" DefaultValue="IA Deusto" />
-          <bt:String id="paneReadButtonLabel" DefaultValue="Analizar Correo" />
-          <bt:String id="paneReadSuperTipTitle" DefaultValue="Detector de Phishing" />
+          <bt:String id="groupLabel" DefaultValue="PhishGuard AI" />
+          <bt:String id="paneReadButtonLabel" DefaultValue="Analizar con IA" />
+          <bt:String id="paneReadSuperTipTitle" DefaultValue="Escáner PhishGuard" />
         </bt:ShortStrings>
         <bt:LongStrings>
           <bt:String id="paneReadSuperTipDescription" DefaultValue="Abre el panel para analizar este correo." />

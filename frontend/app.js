@@ -249,16 +249,27 @@ function pintarCapaEnVivo(capa, datos) {
             </div>`;
     }
     else if (capa === "veredicto") {
-        let colorV = "#107C10"; 
-        if (datos.veredicto.includes("PHISHING") || datos.veredicto === "MALWARE") colorV = "#D83B01";
-        else if (datos.veredicto === "SPAM") colorV = "#FFB900";
+        let colorFondo = "#107C10"; // Verde por defecto
+        let colorTexto = "white";
         
-        document.getElementById("consola").style.borderLeftColor = colorV;
+        // Usamos el color enviado por el Juez Final
+        if (datos.color === "ROJO") {
+            colorFondo = "#D83B01"; // Rojo oscuro
+            colorTexto = "white";
+        } else if (datos.color === "AMARILLO") {
+            colorFondo = "#FFB900"; // Amarillo
+            colorTexto = "black";
+        }
+        
+        document.getElementById("consola").style.borderLeftColor = colorFondo;
+        
         document.getElementById("veredicto-box").innerHTML = `
-            <span style="font-size: 18px; font-weight:bold; color:${colorV};">${datos.veredicto}</span><br>
-            <span style="font-size: 12px; color: #666;">Confianza: ${(datos.confianza * 100).toFixed(0)}%</span>
+            <div style="background-color: ${colorFondo}; color: ${colorTexto}; padding: 10px; border-radius: 4px; text-align: center; margin-bottom: 15px;">
+                <span style="font-size: 18px; font-weight:bold;">${datos.veredicto}</span><br>
+                <span style="font-size: 12px;">Índice de Riesgo: ${datos.score_riesgo}%</span>
+            </div>
             <div style="font-size: 12px; margin-bottom: 15px; text-align: justify;">
-                <br><b>Detalle:</b> ${datos.detalles}
+                <b>Detalle:</b> ${datos.detalles}
             </div>`;
     }
     else if (capa === "error") {
