@@ -38,6 +38,9 @@ async function orquestarAnalisis() {
     try {
         const texto = await obtenerTextoAsync();
         const remitente = Office.context.mailbox.item.from.emailAddress;
+
+        // Obtener el email del usuario actual (la posible víctima)
+        const emailUsuario = Office.context.mailbox.userProfile.emailAddress;
         
         // OBTENER CABECERAS PARA EL SPF
         const cabeceras = await obtenerCabecerasAsync();
@@ -61,7 +64,8 @@ async function orquestarAnalisis() {
                 remitente: remitente, 
                 tiene_adjuntos: tieneAdjuntos,
                 adjuntos: listaAdjuntosParaPython,
-                cabeceras: cabeceras 
+                cabeceras: cabeceras,
+                email_usuario: emailUsuario 
             })
         });
 

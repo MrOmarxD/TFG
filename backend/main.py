@@ -40,7 +40,8 @@ class CorreoRequest(BaseModel):
     remitente: str
     tiene_adjuntos: bool
     adjuntos: Optional[List[Adjunto]] = []
-    cabeceras: Optional[str] = "" 
+    cabeceras: Optional[str] = ""
+    email_usuario: Optional[str] = "" 
 
 @app.post("/api/v1/analizar")
 async def analizar_correo(data: CorreoRequest):
@@ -130,12 +131,17 @@ async def analizar_correo(data: CorreoRequest):
                 # Suma base de riesgo
                 riesgo_total = score_ia + score_spf + score_dnsbl
                 
-                # 3. Factor de Confianza (Contacto Conocido)
-                # Para implementarlo en un entorno real, aquí se consultaría la API de Graph.
-                # Por ahora, simulamos que el dominio de la universidad es de confianza.
+                # 3. Factor de Confianza (Detección de dominio corporativo interno)
                 es_contacto_conocido = False
-                if "@deusto.es" in remitente_real.lower():
+                
+                # Extraemos los dominios (lo que va después de la '@')
+                dominio_remitente = remitente_real.split('@')[-1].lower() if '@' in remitente_real else ""
+                dominio_usuario = data.email_usuario.split('@')[-1].lower() if data.email_usuario else ""
+                
+                # Si los dominios coinciden y no están vacíos, es un correo interno
+                if dominio_remitente == dominio_usuario and dominio_remitente != "":
                     es_contacto_conocido = True
+                    logger.info(f"Remitente corporativo interno detectado (Dominio: {dominio_usuario}). Aplicando multiplicador de confianza.")
                     
                 if es_contacto_conocido:
                     riesgo_total = riesgo_total * 0.8  # Multiplicador reductor de confianza
