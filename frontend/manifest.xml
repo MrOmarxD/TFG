@@ -10,7 +10,6 @@
   <Version>2.0.0.0</Version>
   <ProviderName>Ingeniería Deusto</ProviderName>
   <DefaultLocale>es-ES</DefaultLocale>
-  <ProviderName>Ingeniería Deusto</ProviderName>
   <DisplayName DefaultValue="PhishGuard AI" />
   <Description DefaultValue="Protección proactiva contra phishing y malware utilizando inteligencia artificial local."/>
   <IconUrl DefaultValue="https://cdn-icons-png.flaticon.com/512/2092/2092663.png" />
